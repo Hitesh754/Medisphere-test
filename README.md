@@ -1,80 +1,56 @@
-# Medisphere (Expo)
+# MediSphere
 
-This is an Expo React Native app using Expo Router.
+AI-powered health companion to help users upload reports, organize medical files, and get prescription/lab insights with reminder support.
 
-## 1) Prerequisites
-Install these:
-- **Node.js LTS** (recommended: Node 20+)
-- **npm** (comes with Node.js)
-- **Expo Go** app on phone (optional, for testing on real device)
+## Live Demo
+- Web App: https://medispher.netlify.app/login
 
-## 2) Clone the project
+## Best Experience
+- Open on a mobile device for the best experience (UI and workflows are optimized for phone usage).
 
-```bash
-git clone <your-repo-url>
-cd "Expo Project"
-```
+## Problem Statement
+Personal Health Record & Pre-Consultation Summary tool
 
-## 3) Install dependencies
+## Our Solution
+MediSphere provides one place to:
+- Upload and store prescriptions/lab files securely
+- Analyze reports for quick health insights
+- View records in a categorized medical locker
+- Set and manage medicine reminders
 
+## Key Features
+- Authentication and profile onboarding
+- Prescription and lab report upload flow
+- Automated analysis pipeline integration
+- MediLocker file organization and preview
+- Reminder creation, edit, and delete support
+- Mobile-friendly interface
+
+## Tech Stack
+- Frontend: Expo, React Native, Expo Router, TypeScript
+- Backend/Services: Firebase (Auth/Firestore), Supabase Functions, Cloudinary
+- Deployment: Netlify (web), EAS (mobile builds)
+
+## Run Locally
 ```bash
 npm install
-```
-
-## 4) Run the app (development)
-
-```bash
 npm run dev
 ```
 
-This starts Expo Dev Server and shows options in terminal:
-
-- Press `a` → open Android emulator/device
-- Press `i` → open iOS simulator (macOS only)
-- Press `w` → open web
-- Scan the QR code with Expo Go (Android) or Camera app (iOS)
-
-## 5) Other useful commands
-
+Useful commands:
 ```bash
-npm run lint
 npm run typecheck
+npm run lint
 npm run build:web
 ```
 
-## Common issues
+## Project Structure
+- `app/` - Expo Router screens (`(auth)` and `(tabs)`)
+- `utils/` - Firebase/data helpers and app utilities
+- `components/integrations/supabase/` - Supabase client/types
+- `supabase/functions/scan-prescription/` - Edge function logic
+- `ScanPrescription/` - Python analyzer service code
 
-- If install fails, delete `node_modules` and lockfile, then reinstall:
-  ```bash
-  rm -rf node_modules package-lock.json
-  npm install
-  ```
-  On Windows PowerShell:
-  ```powershell
-  Remove-Item -Recurse -Force node_modules
-  Remove-Item -Force package-lock.json
-  npm install
-  ```
-
-- If Metro cache has issues:
-  ```bash
-  npx expo start -c
-  ```
-
-## Notes
-
-- Project scripts are defined in `package.json`.
-- Main entry is `expo-router/entry`.
-
-## Active structure
-
-The project is currently organized around these active modules:
-
-- `app/` - Expo Router screens (`(auth)` and `(tabs)` groups)
-- `components/integrations/supabase/` - Supabase client used by prescription analyzer
-- `constants/` - app constants and mock data
-- `utils/auth.ts` - auth token helper
-- `ScanPrescription/api/` - Python analyzer backend API
-- `supabase/functions/scan-prescription/` - Supabase edge function for prescription scan
-
-Legacy/unneeded UI modules and meal-planner screens were removed to keep the codebase clean and focused.
+## Hackathon Notes
+- Built for rapid, practical healthcare workflow support.
+- Prioritizes simple UX for daily usage and quick decision support.
