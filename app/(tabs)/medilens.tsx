@@ -7,6 +7,7 @@ import {
 	ScrollView,
 	Alert,
 	ActivityIndicator,
+	Platform,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -24,6 +25,28 @@ import { Redirect } from 'expo-router';
 
 const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+const fileToBase64 = (file: File) =>
+	new Promise<string>((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = reader.result;
+			if (typeof result !== 'string') {
+				reject(new Error('Could not read selected file.'));
+				return;
+			}
+
+			const [, base64] = result.split(',');
+			if (!base64) {
+				reject(new Error('Could not convert file to base64.'));
+				return;
+			}
+
+			resolve(base64);
+		};
+		reader.onerror = () => reject(new Error('File reader failed.'));
+		reader.readAsDataURL(file);
+	});
 
 interface LabResult {
 	testName: string;
@@ -123,7 +146,8 @@ export default function MediLensScreen() {
 		}
 
 		const asset = result.assets[0];
-		const fileMimeType = asset.mimeType || 'application/octet-stream';
+		const webFile = (asset as any).file as File | undefined;
+		const fileMimeType = asset.mimeType || webFile?.type || 'application/octet-stream';
 		const fileName = asset.name || `medilens-file-${Date.now()}`;
 
 		try {
@@ -136,11 +160,17 @@ export default function MediLensScreen() {
 
 			const resourceType = fileMimeType.startsWith('image/') ? 'image' : 'raw';
 			const formData = new FormData();
-			formData.append('file', {
-				uri: asset.uri,
-				type: fileMimeType,
-				name: fileName,
-			} as any);
+
+			if (Platform.OS === 'web' && webFile) {
+				formData.append('file', webFile, fileName);
+			} else {
+				formData.append('file', {
+					uri: asset.uri,
+					type: fileMimeType,
+					name: fileName,
+				} as any);
+			}
+
 			formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 			formData.append('folder', `medisphere/${auth.currentUser.uid}`);
 
@@ -166,9 +196,12 @@ export default function MediLensScreen() {
 				fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
 
 			if (supportsAnalysis) {
-				const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-					encoding: 'base64',
-				});
+				const base64 =
+					Platform.OS === 'web' && webFile
+						? await fileToBase64(webFile)
+						: await FileSystem.readAsStringAsync(asset.uri, {
+								encoding: 'base64',
+						  });
 
 				const { data, error } = await supabase.functions.invoke('extract-lab-report', {
 					body: {
