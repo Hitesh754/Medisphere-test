@@ -25,8 +25,9 @@ export default function SignupScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [countryCode, setCountryCode] = useState(COUNTRY_CODES[0]);
   const [showCountryOptions, setShowCountryOptions] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -50,8 +51,11 @@ export default function SignupScreen() {
     } else if (!/^\d{7,15}$/.test(phoneNumber)) {
       nextErrors.phoneNumber = 'Enter a valid phone number';
     }
-    if (!/^\d{12}$/.test(aadhaarNumber)) {
-      nextErrors.aadhaarNumber = 'Aadhaar number must be 12 digits';
+    if (password.length < 6) {
+      nextErrors.password = 'Password must be at least 6 characters';
+    }
+    if (confirmPassword !== password) {
+      nextErrors.confirmPassword = 'Passwords do not match';
     }
 
     setErrors(nextErrors);
@@ -69,8 +73,8 @@ export default function SignupScreen() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
+        password,
         phone: `${countryCode.code}${phoneNumber.trim()}`,
-        aadhaarNumber: aadhaarNumber.trim(),
       },
     });
   };
@@ -187,19 +191,30 @@ export default function SignupScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Aadhaar Card Number</Text>
+            <Text style={styles.label}>Password</Text>
             <TextInput
-              placeholder="Enter 12-digit Aadhaar number"
+              placeholder="Create password"
               placeholderTextColor="#94A3B8"
-              keyboardType="number-pad"
-              value={aadhaarNumber}
-              onChangeText={(value) =>
-                setAadhaarNumber(value.replace(/\D/g, '').slice(0, 12))
-              }
-              style={[styles.input, errors.aadhaarNumber ? styles.inputError : null]}
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              style={[styles.input, errors.password ? styles.inputError : null]}
             />
-            {errors.aadhaarNumber ? (
-              <Text style={styles.errorText}>{errors.aadhaarNumber}</Text>
+            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Confirm Password</Text>
+            <TextInput
+              placeholder="Confirm password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              style={[styles.input, errors.confirmPassword ? styles.inputError : null]}
+            />
+            {errors.confirmPassword ? (
+              <Text style={styles.errorText}>{errors.confirmPassword}</Text>
             ) : null}
           </View>
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -72,7 +73,19 @@ serve(async (req) => {
 - duration: How long to take it
 - advisory: Important advice like "Take after food", "Avoid alcohol"
 
-If unreadable, return empty medicines array with a note.`,
+If unreadable, return empty medicines array with a note.
+
+Also infer meal timing when possible. Add a mealTiming field for each medicine using one of:
+- Before breakfast
+- After breakfast
+- Before lunch
+- After lunch
+- Before dinner
+- After dinner
+- Bedtime
+- Unknown
+
+Prefer the most specific timing mentioned in the prescription.`,
             },
             {
               role: "user",
@@ -108,8 +121,9 @@ If unreadable, return empty medicines array with a note.`,
                           frequency: { type: "string" },
                           duration: { type: "string" },
                           advisory: { type: "string" },
+                          mealTiming: { type: "string" },
                         },
-                        required: ["name", "dosage", "frequency", "duration", "advisory"],
+                        required: ["name", "dosage", "frequency", "duration", "advisory", "mealTiming"],
                       },
                     },
                     generalAdvice: { type: "string" },

@@ -8,12 +8,37 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ClipboardList } from 'lucide-react-native';
 import { markSignupCompleted } from '@/constants/signupFlow';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth } from '@/utils/firebase';
+import { saveUserProfile } from '@/utils/firebaseData';
 
 const GENDERS = ['Male', 'Female', 'Other'];
+
+const formatTime = (date: Date) => {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const parseTimeToDate = (timeValue: string) => {
+  const match = /^(\d{2}):(\d{2})$/.exec(timeValue);
+  const date = new Date();
+
+  if (!match) {
+    date.setHours(12, 0, 0, 0);
+    return date;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
 
 export default function SignupPersonalScreen() {
   const router = useRouter();
@@ -21,14 +46,53 @@ export default function SignupPersonalScreen() {
     firstName?: string;
     lastName?: string;
     email?: string;
+    password?: string;
     phone?: string;
-    aadhaarNumber?: string;
   }>();
 
   const [gender, setGender] = useState('');
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
+  const [lunchTime, setLunchTime] = useState('');
+  const [dinnerTime, setDinnerTime] = useState('');
+  const [pickerField, setPickerField] = useState<'lunch' | 'dinner' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const openTimePicker = (field: 'lunch' | 'dinner') => {
+    setPickerField(field);
+    setPickerDate(parseTimeToDate(field === 'lunch' ? lunchTime : dinnerTime));
+  };
+
+  const handleTimePicked = (_event: any, selectedDate?: Date) => {
+    setPickerField(null);
+
+    if (!selectedDate || !pickerField) {
+      return;
+    }
+
+    const value = formatTime(selectedDate);
+    if (pickerField === 'lunch') {
+      setLunchTime(value);
+      if (errors.lunchTime) {
+        setErrors((previous) => {
+          const next = { ...previous };
+          delete next.lunchTime;
+          return next;
+        });
+      }
+      return;
+    }
+
+    setDinnerTime(value);
+    if (errors.dinnerTime) {
+      setErrors((previous) => {
+        const next = { ...previous };
+        delete next.dinnerTime;
+        return next;
+      });
+    }
+  };
 
   const validateStepTwo = () => {
     const nextErrors: Record<string, string> = {};
@@ -42,19 +106,56 @@ export default function SignupPersonalScreen() {
     if (!height || Number(height) <= 0) {
       nextErrors.height = 'Enter valid height in cm';
     }
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(lunchTime.trim())) {
+      nextErrors.lunchTime = 'Use HH:MM format (24-hour)';
+    }
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(dinnerTime.trim())) {
+      nextErrors.dinnerTime = 'Use HH:MM format (24-hour)';
+    }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!validateStepTwo()) {
       return;
     }
 
-    markSignupCompleted();
-    Alert.alert('Signup details saved', 'Your profile information is captured.');
-    router.replace('/');
+    if (!params.email || !params.password || !params.firstName || !params.lastName) {
+      Alert.alert('Missing details', 'Please complete signup details again.');
+      return;
+    }
+
+    try {
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        params.email,
+        params.password
+      );
+
+      const fullName = `${params.firstName} ${params.lastName}`.trim();
+      await updateProfile(credential.user, { displayName: fullName });
+
+      await saveUserProfile({
+        uid: credential.user.uid,
+        firstName: params.firstName,
+        lastName: params.lastName,
+        email: params.email,
+        phone: params.phone,
+        gender,
+        weight,
+        height,
+        lunchTime: lunchTime.trim(),
+        dinnerTime: dinnerTime.trim(),
+      });
+
+      markSignupCompleted();
+      Alert.alert('Signup complete', 'Your account and profile are ready.');
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      Alert.alert('Signup failed', error?.message || 'Could not create account.');
+    }
   };
 
   return (
@@ -138,6 +239,42 @@ export default function SignupPersonalScreen() {
             </View>
           </View>
 
+          <View style={styles.rowInputs}>
+            <View style={styles.halfWidth}>
+              <Text style={styles.label}>Lunch Time (HH:MM)</Text>
+              <TouchableOpacity
+                style={[styles.timeButton, errors.lunchTime ? styles.inputError : null]}
+                onPress={() => openTimePicker('lunch')}>
+                <Text style={lunchTime ? styles.timeValueText : styles.timePlaceholderText}>
+                  {lunchTime || 'Select lunch time'}
+                </Text>
+              </TouchableOpacity>
+              {errors.lunchTime ? <Text style={styles.errorText}>{errors.lunchTime}</Text> : null}
+            </View>
+
+            <View style={styles.halfWidth}>
+              <Text style={styles.label}>Dinner Time (HH:MM)</Text>
+              <TouchableOpacity
+                style={[styles.timeButton, errors.dinnerTime ? styles.inputError : null]}
+                onPress={() => openTimePicker('dinner')}>
+                <Text style={dinnerTime ? styles.timeValueText : styles.timePlaceholderText}>
+                  {dinnerTime || 'Select dinner time'}
+                </Text>
+              </TouchableOpacity>
+              {errors.dinnerTime ? <Text style={styles.errorText}>{errors.dinnerTime}</Text> : null}
+            </View>
+          </View>
+
+          {pickerField ? (
+            <DateTimePicker
+              value={pickerDate}
+              mode="time"
+              is24Hour
+              display="default"
+              onChange={handleTimePicked}
+            />
+          ) : null}
+
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Step 1 Summary</Text>
             <Text style={styles.summaryText}>
@@ -145,7 +282,6 @@ export default function SignupPersonalScreen() {
             </Text>
             <Text style={styles.summaryText}>Email: {params.email ?? '-'}</Text>
             <Text style={styles.summaryText}>Phone: {params.phone ?? '-'}</Text>
-            <Text style={styles.summaryText}>Aadhaar: {params.aadhaarNumber ?? '-'}</Text>
           </View>
 
           <TouchableOpacity style={styles.primaryButton} onPress={handleFinish}>
@@ -241,6 +377,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#0F172A',
     backgroundColor: '#FFFFFF',
+  },
+  timeButton: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  timeValueText: {
+    fontSize: 16,
+    color: '#0F172A',
+  },
+  timePlaceholderText: {
+    fontSize: 16,
+    color: '#94A3B8',
   },
   inputError: {
     borderColor: '#DC2626',

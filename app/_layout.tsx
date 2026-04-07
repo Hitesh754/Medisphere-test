@@ -5,6 +5,7 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 
 export default function RootLayout() {
   useFrameworkReady();
+
   return (
     <>
       <Stack screenOptions={{ headerShown: false }}>
@@ -13,7 +14,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="+not-found" />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
     </>
   );
 }

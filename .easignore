@@ -1,0 +1,44 @@
+# Dependencies and package manager caches
+node_modules/
+
+# Expo and build artifacts
+.expo/
+dist/
+web-build/
+
+# Local environment files (use EAS environment variables instead)
+.env
+.env.local
+.env*.local
+
+# IDE/editor and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Local virtual environments and Python caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Native signing material and secrets
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# Debug and tool output
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.tsbuildinfo
+
+# Heavy non-Expo backend/assets not required for app build
+/ScanPrescription/
+/supabase/
+requirements.txt

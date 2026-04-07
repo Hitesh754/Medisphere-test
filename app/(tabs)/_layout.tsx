@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Pill, FolderLock, FileText } from 'lucide-react-native';
+import { Home, Pill, FolderLock, FileText, UserRound } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -49,6 +49,13 @@ export default function TabLayout() {
         options={{
           title: 'MediLens',
           tabBarIcon: ({ size, color }) => <FileText size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ size, color }) => <UserRound size={size} color={color} />,
         }}
       />
       <Tabs.Screen name="reportanalyzer" options={{ href: null }} />

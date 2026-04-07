@@ -4,25 +4,26 @@ import {
 	Text,
 	StyleSheet,
 	TouchableOpacity,
-	Image,
 	ScrollView,
 	Alert,
 	ActivityIndicator,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { StatusBar } from 'expo-status-bar';
 import {
 	FileUp,
-	Camera,
-	Image as ImageIcon,
 	CheckCircle2,
 	User,
 	ClipboardList,
-	FileText,
 } from 'lucide-react-native';
 import { supabase } from '@/components/integrations/supabase/client';
+import { auth } from '@/utils/firebase';
+import { createFileRecord } from '@/utils/firebaseData';
+import { Redirect } from 'expo-router';
+
+const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
 interface LabResult {
 	testName: string;
@@ -46,52 +47,73 @@ interface LabReportAnalysis {
 	error?: string;
 }
 
+const deriveInsightSeverity = (analysis: LabReportAnalysis | null): 'positive' | 'negative' | 'neutral' => {
+	if (!analysis) {
+		return 'neutral';
+	}
+
+	const text = `${analysis.healthSummary || ''} ${analysis.labResults
+		?.map((item) => `${item.status} ${item.testName}`)
+		.join(' ') || ''}`.toLowerCase();
+
+	if (/\b(high|low|abnormal|elevated|critical|concerning|urgent|risk|worse|not normal)\b/i.test(text)) {
+		return 'negative';
+	}
+
+	if (analysis.labResults?.some((item) => item.status !== 'normal')) {
+		return 'negative';
+	}
+
+	if (analysis.healthSummary?.trim()) {
+		return 'positive';
+	}
+
+	return 'neutral';
+};
+
+const detectDocumentType = (
+	fileName: string,
+	mimeType: string,
+	analysis: LabReportAnalysis | null
+): 'Lab Report' | 'Prescription' | 'Vaccination' | 'X-Ray' | 'Document' => {
+	const context = `${fileName} ${mimeType} ${analysis?.healthSummary || ''}`.toLowerCase();
+
+	if (/\b(xray|x-ray|radiology|ct\s?scan|mri|chest\s?scan|ultrasound)\b/.test(context)) {
+		return 'X-Ray';
+	}
+
+	if (/\b(vaccin|vaccination|immunization|booster|covid\s?vaccine|covaxin|covishield)\b/.test(context)) {
+		return 'Vaccination';
+	}
+
+	if (/\b(prescription|rx|medicine|medication|dose|tablet|capsule|syrup|drug)\b/.test(context)) {
+		return 'Prescription';
+	}
+
+	if (
+		analysis?.labResults?.length ||
+		/\b(lab\s?report|blood\s?test|test\s?report|cbc|lipid|hba1c|thyroid|pathology)\b/.test(context)
+	) {
+		return 'Lab Report';
+	}
+
+	return 'Document';
+};
+
 export default function MediLensScreen() {
-	const [previewUri, setPreviewUri] = useState<string | null>(null);
-	const [base64Data, setBase64Data] = useState<string | null>(null);
-	const [mimeType, setMimeType] = useState<string>('image/jpeg');
-	const [selectedFileName, setSelectedFileName] = useState<string>('medilens-report.jpg');
+	const [lastUploadedFileName, setLastUploadedFileName] = useState<string | null>(null);
+	const [lastUploadedFileType, setLastUploadedFileType] = useState<string>('');
 	const [isAnalyzing, setIsAnalyzing] = useState(false);
 	const [analysis, setAnalysis] = useState<LabReportAnalysis | null>(null);
 
-	const selectFromGallery = async () => {
-		const result = await ImagePicker.launchImageLibraryAsync({
-			mediaTypes: ImagePicker.MediaTypeOptions.Images,
-			base64: true,
-			quality: 0.8,
-		});
-
-		if (!result.canceled && result.assets[0]) {
-			const asset = result.assets[0];
-			setPreviewUri(asset.uri);
-			setBase64Data(asset.base64 || null);
-			setMimeType(asset.mimeType || 'image/jpeg');
-			setSelectedFileName(asset.fileName || 'medilens-report.jpg');
-			setAnalysis(null);
-		}
-	};
-
-	const captureWithCamera = async () => {
-		const permission = await ImagePicker.requestCameraPermissionsAsync();
-		if (!permission.granted) {
-			Alert.alert('Permission needed', 'Please allow camera access to upload reports.');
+	const uploadFile = async () => {
+		if (!auth.currentUser) {
+			Alert.alert('Login required', 'Please login to upload and analyze reports.');
 			return;
 		}
 
-		const result = await ImagePicker.launchCameraAsync({ base64: true, quality: 0.8 });
-		if (!result.canceled && result.assets[0]) {
-			const asset = result.assets[0];
-			setPreviewUri(asset.uri);
-			setBase64Data(asset.base64 || null);
-			setMimeType(asset.mimeType || 'image/jpeg');
-			setSelectedFileName(asset.fileName || 'medilens-report.jpg');
-			setAnalysis(null);
-		}
-	};
-
-	const pickPdfReport = async () => {
 		const result = await DocumentPicker.getDocumentAsync({
-			type: 'application/pdf',
+			type: '*/*',
 			copyToCacheDirectory: true,
 			multiple: false,
 		});
@@ -101,56 +123,100 @@ export default function MediLensScreen() {
 		}
 
 		const asset = result.assets[0];
+		const fileMimeType = asset.mimeType || 'application/octet-stream';
+		const fileName = asset.name || `medilens-file-${Date.now()}`;
 
 		try {
-			const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-				encoding: 'base64',
-			});
-
-			setPreviewUri(null);
-			setBase64Data(base64);
-			setMimeType(asset.mimeType || 'application/pdf');
-			setSelectedFileName(asset.name || 'medilens-report.pdf');
+			setIsAnalyzing(true);
 			setAnalysis(null);
-		} catch {
-			Alert.alert('File error', 'Could not read the selected PDF file.');
-		}
-	};
 
-	const analyzeReport = async () => {
-		if (!base64Data) {
-			Alert.alert('No report selected', 'Choose or capture a report first.');
-			return;
-		}
+			if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+				throw new Error('Missing Cloudinary env vars: EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET');
+			}
 
-		setIsAnalyzing(true);
-		setAnalysis(null);
+			const resourceType = fileMimeType.startsWith('image/') ? 'image' : 'raw';
+			const formData = new FormData();
+			formData.append('file', {
+				uri: asset.uri,
+				type: fileMimeType,
+				name: fileName,
+			} as any);
+			formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+			formData.append('folder', `medisphere/${auth.currentUser.uid}`);
 
-		try {
-			const { data, error } = await supabase.functions.invoke('extract-lab-report', {
-				body: {
-					fileBase64: base64Data,
-					mimeType,
-					fileName: selectedFileName,
-				},
+			const cloudinaryResponse = await fetch(
+				`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
+				{
+					method: 'POST',
+					body: formData,
+				}
+			);
+
+			const cloudinaryData = await cloudinaryResponse.json();
+			if (!cloudinaryResponse.ok || !cloudinaryData.secure_url) {
+				throw new Error(cloudinaryData?.error?.message || 'Cloudinary upload failed');
+			}
+
+			const downloadURL = cloudinaryData.secure_url as string;
+			const publicId = (cloudinaryData.public_id as string) || fileName;
+			const fileSizeBytes = (cloudinaryData.bytes as number) || asset.size || 0;
+			let extractedData: LabReportAnalysis | null = null;
+
+			const supportsAnalysis =
+				fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
+
+			if (supportsAnalysis) {
+				const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+					encoding: 'base64',
+				});
+
+				const { data, error } = await supabase.functions.invoke('extract-lab-report', {
+					body: {
+						fileBase64: base64,
+						mimeType: fileMimeType,
+						fileName,
+					},
+				});
+
+				if (!error && !data?.error) {
+					extractedData = data as LabReportAnalysis;
+					setAnalysis(extractedData);
+				}
+			}
+
+			await createFileRecord({
+				userId: auth.currentUser.uid,
+				title: fileName,
+				type: detectDocumentType(fileName, fileMimeType, extractedData),
+				mimeType: fileMimeType,
+				fileSizeBytes,
+				downloadURL,
+				storagePath: publicId,
+				analysisSummary: extractedData?.healthSummary || '',
+				labResultsCount: extractedData?.labResults?.length || 0,
+				insightSeverity: deriveInsightSeverity(extractedData),
 			});
 
-			if (error) {
-				throw new Error(error.message);
-			}
+			setLastUploadedFileName(fileName);
+			setLastUploadedFileType(fileMimeType);
 
-			if (data?.error) {
-				throw new Error(data.error);
+			if (supportsAnalysis && extractedData) {
+				Alert.alert('Upload complete', 'File uploaded and analyzed successfully.');
+			} else if (supportsAnalysis && !extractedData) {
+				Alert.alert('Upload complete', 'File uploaded, but analysis could not be completed.');
+			} else {
+				Alert.alert('Upload complete', 'File uploaded to your locker.');
 			}
-
-			setAnalysis(data as LabReportAnalysis);
-			Alert.alert('Analysis complete', 'Report analyzed successfully.');
 		} catch (err: any) {
-			Alert.alert('Analysis failed', err?.message || 'Could not analyze this report.');
+			Alert.alert('Upload failed', err?.message || 'Could not upload this file.');
 		} finally {
 			setIsAnalyzing(false);
 		}
 	};
+
+	if (!auth.currentUser) {
+		return <Redirect href="/(auth)/login" />;
+	}
 
 	const getStatusStyle = (status: LabResult['status']) => {
 		switch (status) {
@@ -169,79 +235,41 @@ export default function MediLensScreen() {
 		<ScrollView style={styles.container} contentContainerStyle={styles.content}>
 			<StatusBar style="dark" />
 			<Text style={styles.title}>MediLens</Text>
-			<Text style={styles.subtitle}>Upload a lab report image or PDF and get instant AI analysis</Text>
+			<Text style={styles.subtitle}>Upload a PDF or any file and store it securely in your locker</Text>
 
-			{!base64Data && (
-				<View style={styles.uploadCard}>
-					<View style={styles.heroIcon}>
-						<FileUp size={28} color="#FFFFFF" />
-					</View>
-					<Text style={styles.uploadTitle}>Upload Report</Text>
-					<Text style={styles.uploadHint}>Capture an image, pick from gallery, or select a PDF</Text>
-					<View style={styles.buttonRow}>
-						<TouchableOpacity style={styles.primaryButton} onPress={captureWithCamera}>
-							<Camera size={18} color="#FFFFFF" />
-							<Text style={styles.primaryButtonText}>Camera</Text>
-						</TouchableOpacity>
-						<TouchableOpacity style={styles.outlineButton} onPress={selectFromGallery}>
-							<ImageIcon size={18} color="#2563EB" />
-							<Text style={styles.outlineButtonText}>Gallery</Text>
-						</TouchableOpacity>
-						<TouchableOpacity style={styles.outlineButton} onPress={pickPdfReport}>
-							<FileText size={18} color="#2563EB" />
-							<Text style={styles.outlineButtonText}>PDF</Text>
-						</TouchableOpacity>
-					</View>
+			<View style={styles.uploadCard}>
+				<View style={styles.heroIcon}>
+					<FileUp size={28} color="#FFFFFF" />
 				</View>
-			)}
-
-			{base64Data && (
-				<View style={styles.previewCard}>
-					{mimeType === 'application/pdf' ? (
-						<View style={styles.pdfPreview}>
-							<FileText size={36} color="#2563EB" />
-							<Text style={styles.pdfTitle}>PDF Selected</Text>
-							<Text style={styles.pdfName}>{selectedFileName}</Text>
-						</View>
+				<Text style={styles.uploadTitle}>Upload File</Text>
+				<Text style={styles.uploadHint}>
+					Use one button to upload PDF, image, or any other document
+				</Text>
+				<TouchableOpacity
+					style={[styles.primaryButton, isAnalyzing && styles.disabledButton]}
+					onPress={uploadFile}
+					disabled={isAnalyzing}>
+					{isAnalyzing ? (
+						<ActivityIndicator color="#FFFFFF" />
 					) : (
-						<Image source={{ uri: previewUri || '' }} style={styles.previewImage} />
+						<>
+							<FileUp size={18} color="#FFFFFF" />
+							<Text style={styles.primaryButtonText}>Upload File</Text>
+						</>
 					)}
+				</TouchableOpacity>
 
-					<View style={styles.actionsContainer}>
-						<TouchableOpacity
-							style={styles.outlineButton}
-							onPress={mimeType === 'application/pdf' ? pickPdfReport : selectFromGallery}>
-							{mimeType === 'application/pdf' ? (
-								<FileText size={18} color="#2563EB" />
-							) : (
-								<ImageIcon size={18} color="#2563EB" />
-							)}
-							<Text style={styles.outlineButtonText}>Change</Text>
-						</TouchableOpacity>
-
-						<TouchableOpacity
-							style={[styles.primaryButton, isAnalyzing && styles.disabledButton]}
-							onPress={analyzeReport}
-							disabled={isAnalyzing}>
-							{isAnalyzing ? (
-								<ActivityIndicator color="#FFFFFF" />
-							) : (
-								<>
-									<FileUp size={18} color="#FFFFFF" />
-									<Text style={styles.primaryButtonText}>Analyze</Text>
-								</>
-							)}
-						</TouchableOpacity>
+				{lastUploadedFileName ? (
+					<View style={styles.successBox}>
+						<CheckCircle2 size={18} color="#16A34A" />
+						<Text style={styles.successText}>Uploaded: {lastUploadedFileName}</Text>
 					</View>
+				) : null}
+			</View>
 
-					{analysis && (
-						<View style={styles.successBox}>
-							<CheckCircle2 size={18} color="#16A34A" />
-							<Text style={styles.successText}>Report analyzed successfully</Text>
-						</View>
-					)}
-				</View>
-			)}
+			{lastUploadedFileType ? (
+				<Text style={styles.fileTypeText}>File type: {lastUploadedFileType}</Text>
+			) : null}
 
 			{analysis && (
 				<View style={styles.resultCard}>
@@ -344,10 +372,6 @@ const styles = StyleSheet.create({
 		marginBottom: 16,
 		textAlign: 'center',
 	},
-	buttonRow: {
-		flexDirection: 'row',
-		gap: 12,
-	},
 	primaryButton: {
 		backgroundColor: '#2563EB',
 		borderRadius: 12,
@@ -357,7 +381,7 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 		gap: 8,
-		minWidth: 120,
+		minWidth: 180,
 	},
 	disabledButton: {
 		opacity: 0.7,
@@ -367,60 +391,14 @@ const styles = StyleSheet.create({
 		fontWeight: '600',
 		fontSize: 14,
 	},
-	outlineButton: {
-		borderWidth: 1,
-		borderColor: '#2563EB',
-		borderRadius: 12,
-		paddingVertical: 12,
-		paddingHorizontal: 20,
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center',
-		gap: 8,
-		minWidth: 120,
-		backgroundColor: '#FFFFFF',
-	},
-	outlineButtonText: {
-		color: '#2563EB',
-		fontWeight: '600',
-		fontSize: 14,
-	},
-	previewCard: {
-		backgroundColor: '#FFFFFF',
-		borderRadius: 16,
-		overflow: 'hidden',
-	},
-	previewImage: {
-		width: '100%',
-		height: 260,
-	},
-	pdfPreview: {
-		height: 220,
-		alignItems: 'center',
-		justifyContent: 'center',
-		paddingHorizontal: 16,
-		gap: 8,
-		backgroundColor: '#EFF6FF',
-	},
-	pdfTitle: {
-		fontSize: 16,
-		fontWeight: '700',
-		color: '#1E293B',
-	},
-	pdfName: {
-		fontSize: 13,
-		color: '#475569',
-		textAlign: 'center',
-	},
-	actionsContainer: {
-		padding: 14,
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		gap: 10,
+	fileTypeText: {
+		fontSize: 12,
+		color: '#64748B',
+		marginTop: 10,
+		marginLeft: 2,
 	},
 	successBox: {
-		marginHorizontal: 14,
-		marginBottom: 14,
+		marginTop: 14,
 		backgroundColor: '#F0FDF4',
 		borderRadius: 10,
 		paddingVertical: 10,
