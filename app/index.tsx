@@ -7,11 +7,34 @@ export default function Index() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-    });
+    let isMounted = true;
 
-    return unsubscribe;
+    const fallbackTimer = setTimeout(() => {
+      // Avoid a permanent blank screen if auth state callback never resolves on web.
+      if (isMounted) {
+        setUser((current) => (current === undefined ? null : current));
+      }
+    }, 2500);
+
+    let unsubscribe = () => undefined;
+
+    try {
+      unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+        if (isMounted) {
+          setUser(nextUser);
+        }
+      });
+    } catch {
+      if (isMounted) {
+        setUser(null);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+      unsubscribe();
+    };
   }, []);
 
   if (user === undefined) {
