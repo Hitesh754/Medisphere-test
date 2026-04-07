@@ -7,13 +7,18 @@ import { getStorage } from 'firebase/storage';
 const getReactNativePersistence = (require('firebase/auth') as any)
   .getReactNativePersistence as ((storage: any) => any) | undefined;
 
+const cleanEnv = (value: string | undefined) => {
+  if (!value) return value;
+  return value.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1').trim();
+};
+
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  apiKey: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_API_KEY),
+  authDomain: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  projectId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+  appId: cleanEnv(process.env.EXPO_PUBLIC_FIREBASE_APP_ID),
 };
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
