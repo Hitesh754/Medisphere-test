@@ -16,7 +16,7 @@ export default function Index() {
       }
     }, 2500);
 
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => {};
 
     try {
       unsubscribe = onAuthStateChanged(auth, (nextUser) => {

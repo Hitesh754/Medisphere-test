@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ClipboardList } from 'lucide-react-native';
@@ -18,27 +17,6 @@ import { auth } from '@/utils/firebase';
 import { saveUserProfile } from '@/utils/firebaseData';
 
 const GENDERS = ['Male', 'Female', 'Other'];
-
-const formatTime = (date: Date) => {
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
-};
-
-const parseTimeToDate = (timeValue: string) => {
-  const match = /^(\d{2}):(\d{2})$/.exec(timeValue);
-  const date = new Date();
-
-  if (!match) {
-    date.setHours(12, 0, 0, 0);
-    return date;
-  }
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-};
 
 export default function SignupPersonalScreen() {
   const router = useRouter();
@@ -53,46 +31,7 @@ export default function SignupPersonalScreen() {
   const [gender, setGender] = useState('');
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
-  const [lunchTime, setLunchTime] = useState('');
-  const [dinnerTime, setDinnerTime] = useState('');
-  const [pickerField, setPickerField] = useState<'lunch' | 'dinner' | null>(null);
-  const [pickerDate, setPickerDate] = useState(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const openTimePicker = (field: 'lunch' | 'dinner') => {
-    setPickerField(field);
-    setPickerDate(parseTimeToDate(field === 'lunch' ? lunchTime : dinnerTime));
-  };
-
-  const handleTimePicked = (_event: any, selectedDate?: Date) => {
-    setPickerField(null);
-
-    if (!selectedDate || !pickerField) {
-      return;
-    }
-
-    const value = formatTime(selectedDate);
-    if (pickerField === 'lunch') {
-      setLunchTime(value);
-      if (errors.lunchTime) {
-        setErrors((previous) => {
-          const next = { ...previous };
-          delete next.lunchTime;
-          return next;
-        });
-      }
-      return;
-    }
-
-    setDinnerTime(value);
-    if (errors.dinnerTime) {
-      setErrors((previous) => {
-        const next = { ...previous };
-        delete next.dinnerTime;
-        return next;
-      });
-    }
-  };
 
   const validateStepTwo = () => {
     const nextErrors: Record<string, string> = {};
@@ -105,12 +44,6 @@ export default function SignupPersonalScreen() {
     }
     if (!height || Number(height) <= 0) {
       nextErrors.height = 'Enter valid height in cm';
-    }
-    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(lunchTime.trim())) {
-      nextErrors.lunchTime = 'Use HH:MM format (24-hour)';
-    }
-    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(dinnerTime.trim())) {
-      nextErrors.dinnerTime = 'Use HH:MM format (24-hour)';
     }
 
     setErrors(nextErrors);
@@ -146,8 +79,8 @@ export default function SignupPersonalScreen() {
         gender,
         weight,
         height,
-        lunchTime: lunchTime.trim(),
-        dinnerTime: dinnerTime.trim(),
+        lunchTime: '',
+        dinnerTime: '',
       });
 
       markSignupCompleted();
@@ -238,42 +171,6 @@ export default function SignupPersonalScreen() {
               {errors.height ? <Text style={styles.errorText}>{errors.height}</Text> : null}
             </View>
           </View>
-
-          <View style={styles.rowInputs}>
-            <View style={styles.halfWidth}>
-              <Text style={styles.label}>Lunch Time (HH:MM)</Text>
-              <TouchableOpacity
-                style={[styles.timeButton, errors.lunchTime ? styles.inputError : null]}
-                onPress={() => openTimePicker('lunch')}>
-                <Text style={lunchTime ? styles.timeValueText : styles.timePlaceholderText}>
-                  {lunchTime || 'Select lunch time'}
-                </Text>
-              </TouchableOpacity>
-              {errors.lunchTime ? <Text style={styles.errorText}>{errors.lunchTime}</Text> : null}
-            </View>
-
-            <View style={styles.halfWidth}>
-              <Text style={styles.label}>Dinner Time (HH:MM)</Text>
-              <TouchableOpacity
-                style={[styles.timeButton, errors.dinnerTime ? styles.inputError : null]}
-                onPress={() => openTimePicker('dinner')}>
-                <Text style={dinnerTime ? styles.timeValueText : styles.timePlaceholderText}>
-                  {dinnerTime || 'Select dinner time'}
-                </Text>
-              </TouchableOpacity>
-              {errors.dinnerTime ? <Text style={styles.errorText}>{errors.dinnerTime}</Text> : null}
-            </View>
-          </View>
-
-          {pickerField ? (
-            <DateTimePicker
-              value={pickerDate}
-              mode="time"
-              is24Hour
-              display="default"
-              onChange={handleTimePicked}
-            />
-          ) : null}
 
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Step 1 Summary</Text>
@@ -377,22 +274,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#0F172A',
     backgroundColor: '#FFFFFF',
-  },
-  timeButton: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  timeValueText: {
-    fontSize: 16,
-    color: '#0F172A',
-  },
-  timePlaceholderText: {
-    fontSize: 16,
-    color: '#94A3B8',
   },
   inputError: {
     borderColor: '#DC2626',
